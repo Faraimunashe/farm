@@ -12,12 +12,15 @@ return [
     'truncate_tables' => true,
 
     'roles_structure' => [
-        'admin' => [
+        'farmer' => [
             'users' => 'c,r,u,d',
             'payments' => 'c,r,u,d',
             'profile' => 'r,u',
         ],
-        'user' => [
+        'lender' => [
+            'profile' => 'r,u',
+        ],
+        'insurer' => [
             'profile' => 'r,u',
         ],
     ],
