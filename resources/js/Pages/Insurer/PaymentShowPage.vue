@@ -213,11 +213,13 @@ const completionLoading = ref(false)
 const failureLoading = ref(false)
 
 const completionForm = useForm({
-  notes: ''
+  notes: '',
+  status: 'completed'
 })
 
 const failureForm = useForm({
-  reason: ''
+  reason: '',
+  status: 'failed'
 })
 
 const completePayment = () => {

@@ -11,9 +11,12 @@ use App\Models\Payment;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class InsuranceController extends Controller
 {
+
+
     public function index()
     {
         $user = Auth::user();
@@ -89,9 +92,11 @@ class InsuranceController extends Controller
             'insurer_id' => 'required|exists:insurers,id',
             'insurance_plan_id' => 'required|exists:insurance_plans,id',
             'farm_id' => 'required|exists:farms,id',
+            'coverage_type' => 'required|string|in:crop,livestock,equipment,property',
             'coverage_amount' => 'required|numeric|min:0',
             'premium_amount' => 'required|numeric|min:0',
             'payment_method' => 'required|string|in:paynow,ecocash,bank_transfer',
+            'ecocash_number' => 'required_if:payment_method,ecocash|string|min:10|max:15',
             'start_date' => 'required|date',
             'end_date' => 'required|date|after:start_date',
         ]);
@@ -99,41 +104,177 @@ class InsuranceController extends Controller
         try {
             DB::beginTransaction();
 
-            // Create the insurance policy
-            $insurance = Insurance::create([
-                'user_id' => Auth::id(),
-                'insurer_id' => $request->insurer_id,
-                'insurance_plan_id' => $request->insurance_plan_id,
-                'farm_id' => $request->farm_id,
-                'policy_number' => 'POL-' . time() . '-' . Auth::id(),
-                'coverage_amount' => $request->coverage_amount,
-                'premium_amount' => $request->premium_amount,
-                'start_date' => $request->start_date,
-                'end_date' => $request->end_date,
-                'status' => 'pending',
-                'payment_status' => 'pending',
-                'payment_method' => $request->payment_method,
-            ]);
+            // Handle different payment methods
+            if ($request->payment_method === 'ecocash') {
+                // For Ecocash, create temporary records and process payment immediately
+                $user = Auth::user();
 
-            // Create initial payment record
-            $payment = Payment::create([
-                'user_id' => Auth::id(),
-                'insurance_id' => $insurance->id,
-                'amount' => $request->premium_amount,
-                'payment_method' => $request->payment_method,
-                'status' => 'pending',
-                'currency' => 'USD',
-                'description' => 'Insurance premium payment for ' . $insurance->policy_number,
-            ]);
+                // Create a temporary insurance record with processing status
+                $insurance = Insurance::create([
+                    'user_id' => Auth::id(),
+                    'insurer_id' => $request->insurer_id,
+                    'insurance_plan_id' => $request->insurance_plan_id,
+                    'farm_id' => $request->farm_id,
+                    'policy_number' => 'POL-' . time() . '-' . Auth::id(),
+                    'coverage_type' => $request->coverage_type,
+                    'coverage_amount' => $request->coverage_amount,
+                    'premium_amount' => $request->premium_amount,
+                    'start_date' => $request->start_date,
+                    'end_date' => $request->end_date,
+                    'status' => 'processing',
+                    'payment_status' => 'processing',
+                    'payment_method' => $request->payment_method,
+                    'transaction_id' => $request->ecocash_number,
+                ]);
 
-            DB::commit();
+                // Create a temporary payment record
+                $payment = Payment::create([
+                    'user_id' => Auth::id(),
+                    'insurance_id' => $insurance->id,
+                    'amount' => $request->premium_amount,
+                    'payment_method' => $request->payment_method,
+                    'status' => 'processing',
+                    'currency' => 'USD',
+                    'fee_amount' => 0.00,
+                    'net_amount' => $request->premium_amount,
+                    'description' => 'Insurance premium payment for ' . $insurance->policy_number,
+                ]);
 
-            return redirect()->route('farmer.insurance.show', $insurance)
-                ->with('success', 'Insurance application submitted successfully! Payment is pending.');
+                // Process Ecocash payment directly in this function
+                $wallet = "ecocash";
+                if (strpos($request->ecocash_number, '071') === 0) {
+                    $wallet = "onemoney";
+                }
+
+                try {
+                    $paynow = new \Paynow\Payments\Paynow(
+                        env('PAYNOW_INTEGRATION_ID'),
+                        env('PAYNOW_INTEGRATION_KEY'),
+                        route('farmer.insurance.store'),
+                        route('farmer.insurance.store'),
+                    );
+
+                    // Create Payments
+                    $invoice_name = "FARM_INSURANCE_" . time();
+                    $paynowPayment = $paynow->createPayment($invoice_name, $user->email);
+                    $paynowPayment->add("Farm Insurance Premium", $request->premium_amount);
+
+                    $response = $paynow->sendMobile($paynowPayment, $request->ecocash_number, $wallet);
+
+                    // Check transaction success
+                    if ($response->success()) {
+                        $timeout = 9;
+                        $count = 0;
+
+                        while (true) {
+                            sleep(3);
+                            // Get the status of the transaction
+                            $pollUrl = $response->pollUrl();
+                            $status = $paynow->pollTransaction($pollUrl);
+
+                            // Check if paid
+                            if ($status->paid()) {
+                                // Transaction was successful
+                                $info = $status->data();
+
+                                // Update payment record
+                                $payment->update([
+                                    'status' => 'completed',
+                                    'transaction_id' => $info['paynowreference'],
+                                    'payment_date' => now(),
+                                    'gateway_response' => $info,
+                                    'net_amount' => $info['amount'] ?? $payment->amount
+                                ]);
+
+                                // Update insurance status
+                                $insurance->update([
+                                    'status' => 'active',
+                                    'payment_status' => 'paid'
+                                ]);
+
+                                Log::info('Ecocash payment successful for insurance: ' . $insurance->id, $info);
+
+                                // Payment successful - finalize the records
+                                DB::commit();
+                                return redirect()->route('farmer.insurance.show', $insurance)
+                                    ->with('success', 'Insurance application submitted and payment completed successfully! Your policy is now active.');
+                            }
+
+                            $count++;
+                            if ($count > $timeout) {
+                                $info = $status->data();
+
+                                // Update payment record as failed
+                                $payment->update([
+                                    'status' => 'failed',
+                                    'transaction_id' => $info['paynowreference'] ?? null,
+                                    'gateway_response' => $info
+                                ]);
+
+                                Log::warning('Ecocash payment timeout for insurance: ' . $insurance->id, $info);
+
+                                // Payment failed - rollback the temporary records
+                                DB::rollBack();
+                                return back()->withErrors(['error' => 'Ecocash payment failed. Please try again or choose a different payment method.']);
+                            }
+                        }
+                    }
+
+                    Log::error('Ecocash payment initiation failed for insurance: ' . $insurance->id);
+
+                    // Payment failed - rollback the temporary records
+                    DB::rollBack();
+                    return back()->withErrors(['error' => 'Ecocash payment initiation failed. Please try again or choose a different payment method.']);
+
+                } catch (\Exception $e) {
+                    Log::error('Ecocash payment error for insurance: ' . $insurance->id, [
+                        'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString()
+                    ]);
+
+                    // Payment failed - rollback the temporary records
+                    DB::rollBack();
+                    return back()->withErrors(['error' => 'Ecocash payment error: ' . $e->getMessage()]);
+                }
+            } else {
+                // For other payment methods, create records with pending status
+                $insurance = Insurance::create([
+                    'user_id' => Auth::id(),
+                    'insurer_id' => $request->insurer_id,
+                    'insurance_plan_id' => $request->insurance_plan_id,
+                    'farm_id' => $request->farm_id,
+                    'policy_number' => 'POL-' . time() . '-' . Auth::id(),
+                    'coverage_type' => $request->coverage_type,
+                    'coverage_amount' => $request->coverage_amount,
+                    'premium_amount' => $request->premium_amount,
+                    'start_date' => $request->start_date,
+                    'end_date' => $request->end_date,
+                    'status' => 'pending',
+                    'payment_status' => 'pending',
+                    'payment_method' => $request->payment_method,
+                ]);
+
+                // Create initial payment record
+                $payment = Payment::create([
+                    'user_id' => Auth::id(),
+                    'insurance_id' => $insurance->id,
+                    'amount' => $request->premium_amount,
+                    'payment_method' => $request->payment_method,
+                    'status' => 'pending',
+                    'currency' => 'USD',
+                    'fee_amount' => 0.00,
+                    'net_amount' => $request->premium_amount,
+                    'description' => 'Insurance premium payment for ' . $insurance->policy_number,
+                ]);
+
+                DB::commit();
+                return redirect()->route('farmer.insurance.show', $insurance)
+                    ->with('success', 'Insurance application submitted successfully! Payment is pending.');
+            }
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return back()->withErrors(['error' => 'Failed to create insurance policy. Please try again.']);
+            return back()->withErrors(['error' => $e->getMessage()]);
         }
     }
 

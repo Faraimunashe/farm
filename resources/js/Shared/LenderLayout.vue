@@ -92,12 +92,8 @@
       navigation() {
         return [
           { name: 'Dashboard', href: '/lender/dashboard', icon: 'fa fa-tachometer-alt' },
-          { name: 'Loan Applications', href: '/lender/loans/applications', icon: 'fa fa-file-invoice-dollar' },
-          { name: 'Active Loans', href: '/lender/loans/active', icon: 'fa fa-check-circle' },
           { name: 'All Loans', href: '/lender/loans', icon: 'fa fa-list' },
           { name: 'Transactions', href: '/lender/transactions', icon: 'fa fa-exchange-alt' },
-          { name: 'Reports', href: '/lender/reports', icon: 'fa fa-chart-bar' },
-          { name: 'Documents', href: '/lender/documents', icon: 'fa fa-file-alt' },
           { name: 'Profile', href: '/lender/profile', icon: 'fa fa-user-cog' }
         ]
       }

@@ -42,6 +42,19 @@
       </div>
     </div>
 
+    <div v-if="form.errors && form.errors.error" class="bg-red-50 border border-red-200 rounded-lg p-4">
+      <div class="flex">
+        <div class="flex-shrink-0">
+          <svg class="h-5 w-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path>
+          </svg>
+        </div>
+        <div class="ml-3">
+          <p class="text-sm text-red-800">{{ form.errors.error }}</p>
+        </div>
+      </div>
+    </div>
+
     <!-- Step 1: Farm & Insurer Selection -->
     <div v-if="currentStep === 1" class="bg-white rounded-lg shadow p-6">
       <h2 class="text-lg font-semibold text-gray-900 mb-4">Step 1: Select Your Farm and Insurer</h2>
@@ -75,7 +88,7 @@
           >
             <option value="">Choose an insurer...</option>
             <option v-for="insurer in insurers" :key="insurer.id" :value="insurer.id">
-              {{ insurer.name }} - {{ insurer.activeInsurancePlans?.length || 0 }} plans available
+              {{ insurer.name }} - {{ insurer.active_insurance_plans?.length || 0 }} plans available
             </option>
           </select>
           <div v-if="form.errors.insurer_id" class="text-sm text-red-500 mt-1">{{ form.errors.insurer_id }}</div>
@@ -257,6 +270,19 @@
             <div v-if="form.errors.payment_method" class="text-sm text-red-500 mt-1">{{ form.errors.payment_method }}</div>
           </div>
 
+          <!-- Ecocash Number Input -->
+          <div v-if="form.payment_method === 'ecocash'">
+            <label class="block text-sm font-semibold text-gray-700 mb-2">Ecocash Number *</label>
+            <input
+              type="tel"
+              v-model="form.ecocash_number"
+              placeholder="Enter your Ecocash number"
+              class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200"
+              :class="{ 'border-red-500': form.errors.ecocash_number }"
+            />
+            <div v-if="form.errors.ecocash_number" class="text-sm text-red-500 mt-1">{{ form.errors.ecocash_number }}</div>
+          </div>
+
           <!-- Final Summary -->
           <div class="bg-gray-50 p-4 rounded-lg">
             <h4 class="font-medium text-gray-900 mb-3">Application Summary</h4>
@@ -284,6 +310,10 @@
               <div class="flex justify-between">
                 <span class="text-gray-600">Payment Method:</span>
                 <span class="font-medium capitalize">{{ form.payment_method }}</span>
+              </div>
+              <div v-if="form.payment_method === 'ecocash'" class="flex justify-between">
+                <span class="text-gray-600">Ecocash Number:</span>
+                <span class="font-medium">{{ form.ecocash_number }}</span>
               </div>
             </div>
           </div>
@@ -339,16 +369,24 @@ const form = useForm({
   premium_amount: '',
   start_date: '',
   end_date: '',
-  payment_method: ''
+  payment_method: '',
+  ecocash_number: ''
 })
 
 const canSubmit = computed(() => {
-  return form.farm_id &&
+  const basicValidation = form.farm_id &&
          form.insurer_id &&
          selectedPlan.value &&
          form.start_date &&
          form.end_date &&
          form.payment_method
+
+  // If Ecocash is selected, require ecocash_number
+  if (form.payment_method === 'ecocash') {
+    return basicValidation && form.ecocash_number
+  }
+
+  return basicValidation
 })
 
 const onFarmChange = () => {
@@ -408,6 +446,7 @@ const selectPlan = (plan) => {
   form.insurance_plan_id = plan.id
   form.coverage_amount = plan.calculated_coverage
   form.premium_amount = plan.calculated_premium
+  form.coverage_type = plan.coverage_type
 
   // Set default dates
   const startDate = new Date()
@@ -444,6 +483,20 @@ const getInsurerName = () => {
 
 const submitApplication = () => {
   if (!canSubmit.value) return
+
+  // Debug: Log form data before submission
+  console.log('Submitting form with data:', {
+    farm_id: form.farm_id,
+    insurer_id: form.insurer_id,
+    coverage_type: form.coverage_type,
+    insurance_plan_id: form.insurance_plan_id,
+    coverage_amount: form.coverage_amount,
+    premium_amount: form.premium_amount,
+    start_date: form.start_date,
+    end_date: form.end_date,
+    payment_method: form.payment_method,
+    ecocash_number: form.ecocash_number
+  })
 
   submitting.value = true
   form.post('/farmer/insurance', {
