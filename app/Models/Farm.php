@@ -6,6 +6,15 @@ use Illuminate\Database\Eloquent\Model;
 
 class Farm extends Model
 {
+    protected $fillable = [
+        'user_id',
+        'name',
+        'address',
+        'contact',
+        'size',
+        'type',
+    ];
+
     public function user()
     {
         return $this->belongsTo(User::class);
@@ -28,6 +37,16 @@ class Farm extends Model
 
     public function insurances()
     {
-        return $this->hasMany(Insuarance::class);
+        return $this->hasMany(Insurance::class);
+    }
+
+    public function activeInsurance()
+    {
+        return $this->hasOne(Insurance::class)->where('status', 'active');
+    }
+
+    public function pendingInsurance()
+    {
+        return $this->hasOne(Insurance::class)->where('status', 'pending');
     }
 }

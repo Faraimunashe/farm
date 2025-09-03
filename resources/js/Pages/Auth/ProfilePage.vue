@@ -28,7 +28,7 @@
         <div class="relative">
             <img
             class="w-32 h-32 rounded-full border-4 border-blue-500 shadow-xl object-cover"
-            src="../../../assets/userr.jpg"
+            src=""
             alt="Profile Picture"
             />
             <span class="absolute bottom-0 right-1 transform translate-y-1/2 bg-green-500 border-2 border-white w-4 h-4 rounded-full shadow"></span>

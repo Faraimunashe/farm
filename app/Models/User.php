@@ -53,18 +53,33 @@ class User extends Authenticatable implements LaratrustUser
         return $this->hasMany(Farm::class);
     }
 
-    public function lenders()
+    public function lender()
     {
-        return $this->hasMany(Lender::class);
+        return $this->hasOne(Lender::class);
     }
 
-    public function insurers()
+    public function insurer()
     {
-        return $this->hasMany(Insurer::class);
+        return $this->hasOne(Insurer::class);
     }
 
     public function loans()
     {
         return $this->hasMany(Loan::class);
+    }
+
+    public function insurances()
+    {
+        return $this->hasMany(Insurance::class);
+    }
+
+    public function payments()
+    {
+        return $this->hasMany(Payment::class);
+    }
+
+    public function claims()
+    {
+        return $this->hasMany(Claim::class);
     }
 }

@@ -14,9 +14,15 @@ class AuthenticationController extends Controller
     {
         if(Auth::user()->hasRole('farmer'))
         {
-            return redirect()->route('farm.index');
+            return redirect()->route('farmer.dashboard');
+        }elseif(Auth::user()->hasRole('lender'))
+        {
+            return redirect()->route('lender.dashboard');
+        }elseif(Auth::user()->hasRole('insurer'))
+        {
+            return redirect()->route('insurer.dashboard');
         }else{
-            dd("Undefined");
+            return redirect()->route('farmer.dashboard'); // Default fallback
         }
     }
 

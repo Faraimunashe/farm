@@ -3,63 +3,107 @@
 namespace App\Http\Controllers\Farmer;
 
 use App\Http\Controllers\Controller;
+use App\Models\Farm;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 class FarmController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
     public function index()
     {
-        //
+        $farms = Farm::where('user_id', Auth::id())->get();
+
+        return inertia('Farmer/FarmsPage', [
+            'farms' => $farms
+        ]);
     }
 
-    /**
-     * Show the form for creating a new resource.
-     */
     public function create()
     {
-        //
+        return inertia('Farmer/FarmCreatePage');
     }
 
-    /**
-     * Store a newly created resource in storage.
-     */
     public function store(Request $request)
     {
-        //
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'address' => 'required|string|max:500',
+            'contact' => 'required|string|max:255',
+            'size' => 'required|numeric|min:0',
+            'type' => 'required|string|in:crops,livestock,mixed',
+        ]);
+
+        Farm::create([
+            'user_id' => Auth::id(),
+            'name' => $request->name,
+            'address' => $request->address,
+            'contact' => $request->contact,
+            'size' => $request->size,
+            'type' => $request->type,
+        ]);
+
+        return redirect()->route('farmer.farms.index')->with('success', 'Farm created successfully!');
     }
 
-    /**
-     * Display the specified resource.
-     */
-    public function show(string $id)
+    public function show(Farm $farm)
     {
-        //
+        // Ensure the farm belongs to the authenticated user
+        if ($farm->user_id !== Auth::id()) {
+            abort(403);
+        }
+
+        return inertia('Farmer/FarmShowPage', [
+            'farm' => $farm->load(['transactions', 'plans', 'creditScore', 'insurances'])
+        ]);
     }
 
-    /**
-     * Show the form for editing the specified resource.
-     */
-    public function edit(string $id)
+    public function edit(Farm $farm)
     {
-        //
+        // Ensure the farm belongs to the authenticated user
+        if ($farm->user_id !== Auth::id()) {
+            abort(403);
+        }
+
+        return inertia('Farmer/FarmEditPage', [
+            'farm' => $farm
+        ]);
     }
 
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(Request $request, string $id)
+    public function update(Request $request, Farm $farm)
     {
-        //
+        // Ensure the farm belongs to the authenticated user
+        if ($farm->user_id !== Auth::id()) {
+            abort(403);
+        }
+
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'address' => 'required|string|max:500',
+            'contact' => 'required|string|max:255',
+            'size' => 'required|numeric|min:0',
+            'type' => 'required|string|in:crops,livestock,mixed',
+        ]);
+
+        $farm->update([
+            'name' => $request->name,
+            'address' => $request->address,
+            'contact' => $request->contact,
+            'size' => $request->size,
+            'type' => $request->type,
+        ]);
+
+        return redirect()->route('farmer.farms.index')->with('success', 'Farm updated successfully!');
     }
 
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy(string $id)
+    public function destroy(Farm $farm)
     {
-        //
+        // Ensure the farm belongs to the authenticated user
+        if ($farm->user_id !== Auth::id()) {
+            abort(403);
+        }
+
+        $farm->delete();
+
+        return redirect()->route('farmer.farms.index')->with('success', 'Farm deleted successfully!');
     }
 }
